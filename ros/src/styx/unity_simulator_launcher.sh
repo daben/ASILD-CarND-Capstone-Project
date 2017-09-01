@@ -2,7 +2,7 @@
 #
 # Script to launch the CarND Unity simulator
 
-USER_PROFILE="profile.tmp"
+USER_PROFILE="$HOME/profile.tmp"
 
 if [ ! -f "$USER_PROFILE" ];
   then
