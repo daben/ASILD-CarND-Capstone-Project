@@ -73,7 +73,7 @@ class WaypointUpdater(object):
     def waypoints_cb(self, waypoints):
         # TODO: Implement
         self.wpsBase = waypoints.waypoints;
-        self.base_wp_sub.unregister()
+        self.base_wp_sub.unregister() # unsubcribe after the first data receive. It is always the same data
         #rospy.loginfo("pierre_wp" + "_startList" +"1"+ str((waypoints)))
         #for wp in waypoints.waypoints:
             #rospy.loginfo("pierre_wp %s %s %s %s", str(type(wp)), str(type(wp.pose)), str(type(wp.pose.pose)), str(type(wp.pose.pose.position)))
