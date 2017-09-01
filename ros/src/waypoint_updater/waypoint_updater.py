@@ -6,6 +6,7 @@ from matplotlib.cbook import maxdict
 
 from styx_msgs.msg import Lane, Waypoint
 import sys
+import numpy as np
 
 import math
 
@@ -40,7 +41,11 @@ class WaypointUpdater(object):
         self.final_waypoints_pub = rospy.Publisher('final_waypoints', Lane, queue_size=1)
 
         # TODO: Add other member variables you need below
-        self.wpsBase=[];
+        # waypoints base list
+        self.wpsBase=[] #waypoint format just to copie
+        self.wpsPositions = None #numpy array waypoint positions [X,Y], to optimize time computation
+
+
 
         self.lastIndex =-1
         self.pose_cbIndex=0
@@ -58,7 +63,7 @@ class WaypointUpdater(object):
         #self.ratePose.sleep()
 
 
-        maxDistance, maxDistanceIndex = self.closestWp2Pose(msg.pose,self.wpsBase)
+        maxDistance, maxDistanceIndex = self.closestWp2PoseNumpy(msg.pose)
         wpOut = self.selectWP(self.wpsBase,maxDistanceIndex)
         lane=Lane();
         lane.waypoints = wpOut
@@ -78,6 +83,13 @@ class WaypointUpdater(object):
         #for wp in waypoints.waypoints:
             #rospy.loginfo("pierre_wp %s %s %s %s", str(type(wp)), str(type(wp.pose)), str(type(wp.pose.pose)), str(type(wp.pose.pose.position)))
         #    rospy.loginfo("pierre_wp," + str(wp.pose.pose.position.x)+","+str(wp.pose.pose.position.y))
+
+        # copy each waypoint position in numpy array
+        self.wpsPositions = np.zeros((len(self.wpsBase),2), dtype=np.double)
+        for i in range(0, len(self.wpsBase)):
+            self.wpsPositions[i, 0] = waypoints.waypoints[i].pose.pose.position.x
+            self.wpsPositions[i, 1] = waypoints.waypoints[i].pose.pose.position.y
+
         pass
 
     def traffic_cb(self, msg):
@@ -102,7 +114,7 @@ class WaypointUpdater(object):
             wp1 = i
         return dist
 
-    # not efficient, I test for everyone each time. todo, start form last position
+    # not efficient, I test for everyone each time. todo, start form last position and numpy computing
     def closestWp2Pose(self, pose, waypoints):
         dl = lambda a, b: ((a.x - b.x) ** 2 + (a.y - b.y) ** 2 )
         maxDistanceIndex=-1
@@ -112,6 +124,16 @@ class WaypointUpdater(object):
             if(dist<maxDistance):
                 maxDistance = dist
                 maxDistanceIndex=i
+        return maxDistance,maxDistanceIndex
+
+
+    # same as closestWp2Pose, using numpy
+    def closestWp2PoseNumpy(self, pose):
+        wpDeltaX=self.wpsPositions[:,0]-pose.position.x
+        wpDeltaY = self.wpsPositions[:, 1] - pose.position.y
+        deltaSquareDistance = (wpDeltaX*wpDeltaX)+(wpDeltaY*wpDeltaY)
+        maxDistance = deltaSquareDistance.min()
+        maxDistanceIndex = deltaSquareDistance.argmin()
         return maxDistance,maxDistanceIndex
 
     def selectWP(self,waypoints,indexClosest):

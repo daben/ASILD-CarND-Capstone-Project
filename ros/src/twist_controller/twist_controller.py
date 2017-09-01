@@ -64,7 +64,7 @@ class Controller(object):
             brake=0.0
             throttle = linear # not seem to percent by m/s-2/self.accel_limit # percent or 0->1 ?
         else:
-            brake = (-linear + self.brake_deadband)*4000
+            brake = (-linear + self.brake_deadband)*3250/-self.decel_limit
             throttle = 0.0
 
 
