@@ -35,14 +35,9 @@ def telemetry(sid, data):
 
     # Send control values after receiving telemetry (~50Hz)
     #
-    # We have two options here:
-    # 1) To keep the last value in a topic active until a new update.
-    #    This will help if the twist controller is too slow (below the 50Hz).
-    for topic, value in msgs.items():
-        sio.emit(topic, data=value, skip_sid=True)
-    # 2) Level back to zero after a change.
-    # for topic in msgs.keys():
-    #     sio.emit(topic, data=msgs.pop(topic), skip_sid=True)
+    # We have to pop the messages because the topics may exclude each other:
+    for topic in msgs.keys():
+        sio.emit(topic, data=msgs.pop(topic), skip_sid=True)
 
 @sio.on('control')
 def control(sid, data):
