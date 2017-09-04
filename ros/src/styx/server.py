@@ -12,7 +12,11 @@ from conf import conf
 sio = socketio.Server()
 app = Flask(__name__)
 bridge = Bridge(conf)
-msgs = []
+
+# Instead of the unbounded queue we use a dictionary
+# to map each topic (throttle, brake and steering) with
+# the latest value
+msgs = {}
 
 
 @sio.on('connect')
@@ -21,18 +25,19 @@ def connect(sid, environ):
     bridge.publish_dbw_status(True)
 
 def send(topic, data):
-    s = 1
-    msgs.append((topic, data))
-    #sio.emit(topic, data=json.dumps(data), skip_sid=True)
+    msgs[topic] = data
 
 bridge.register_server(send)
 
 @sio.on('telemetry')
 def telemetry(sid, data):
     bridge.publish_odometry(data)
-    for i in range(len(msgs)):
-        topic, data = msgs.pop(0)
-        sio.emit(topic, data=data, skip_sid=True)
+
+    # Send control values after receiving telemetry (~50Hz)
+    #
+    # We have to pop the messages because the topics may exclude each other:
+    for topic in msgs.keys():
+        sio.emit(topic, data=msgs.pop(topic), skip_sid=True)
 
 @sio.on('control')
 def control(sid, data):
