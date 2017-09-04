@@ -72,7 +72,9 @@ class WaypointLoader(object):
         return waypoints
 
     def publish(self, waypoints):
-        rate = rospy.Rate(40)
+        publish_frequency = rospy.get_param("~publish_frequency", 40)  # 40 Hz by default
+        rospy.logdebug("waypoint loader publishing at %.1f Hz", publish_frequency)
+        rate = rospy.Rate(publish_frequency)
         while not rospy.is_shutdown():
             lane = Lane()
             lane.header.frame_id = '/world'

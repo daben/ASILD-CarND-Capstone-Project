@@ -17,4 +17,11 @@
 
     <!--Traffic Light Detector Node -->
     <include file="$(find tl_detector)/launch/tl_detector.launch"/>
+
+    <group if="true">
+      <!-- Reduce the frequency of waypoint loader to cause less trouble in
+      average systems -->
+      <param name="/waypoint_loader/publish_frequency" value="1" />
+    </group>
+
 </launch>
