@@ -72,6 +72,7 @@ class DBWNode(object):
             #                                                     <any other argument you need>)
             # if <dbw is enabled>:
             #   self.publish(throttle, brake, steer)
+            self.publish(0.1,0,0); # just to move the car
             rate.sleep()
 
     def publish(self, throttle, brake, steer):
