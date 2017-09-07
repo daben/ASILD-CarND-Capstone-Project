@@ -161,7 +161,7 @@ class Bridge(object):
 
     def publish_traffic(self, data):
         x, y, z = data['light_pos_x'], data['light_pos_y'], data['light_pos_z'],
-        yaw = [math.atan2(dy, dx) for dx, dy in zip(data['light_pos_dx'], data['light_pos_dy'])]
+        yaw = [math.degrees(math.atan2(dy, dx)) for dx, dy in zip(data['light_pos_dx'], data['light_pos_dy'])]
         status = data['light_state']
 
         lights = TrafficLightArray()
