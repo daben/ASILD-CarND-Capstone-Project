@@ -40,6 +40,7 @@
 #include <tf/transform_broadcaster.h>
 #include <tf/transform_listener.h>
 #include "styx_msgs/Lane.h"
+#include "styx_msgs/Waypoint.h"
 
 class WayPoints
 {
@@ -64,6 +65,10 @@ public:
   styx_msgs::Lane getCurrentWaypoints() const
   {
     return current_waypoints_;
+  }
+  styx_msgs::Waypoint getWaypoint(int waypoint) const
+  {
+    return current_waypoints_.waypoints[waypoint];
   }
   bool isFront(int waypoint, geometry_msgs::Pose current_pose) const;
 };
