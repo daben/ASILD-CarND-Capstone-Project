@@ -1,6 +1,7 @@
 camera_info:
-  focal_length_x: 0.97428
-  focal_length_y: 1.73205
+  # FIXME: This is tentative...
+  focal_length_x: 821.11919  # 800 / 0.97428
+  focal_length_y: 369.50434  # 600 / 1.73205
   image_width: 800
   image_height: 600
 light_positions:
