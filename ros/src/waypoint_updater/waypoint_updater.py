@@ -9,6 +9,7 @@ import sys
 import numpy as np
 
 import math
+import threading
 
 '''
 This node will publish waypoints from the car's current position to some `x` distance ahead.
@@ -39,10 +40,12 @@ class WaypointUpdater(object):
 
         self.final_waypoints_pub = rospy.Publisher('final_waypoints', Lane, queue_size=1)
 
-        # TODO: Add other member variables you need below
         # waypoints base list
         self.wpsBase = None
-        self.wpsPositions = None #numpy array waypoint positions [X,Y], to optimize time computation
+        # numpy array waypoint with positions [X,Y], to optimize time computation
+        self.wpsXY = None
+        # waypoints critical section
+        self.wpsLock = threading.RLock()
 
         # Number added to the closest waypoint index, to be sure to be in front and not in back.
         # with the closest algorithm, the waypoint found could be in front or in back of the car
@@ -51,36 +54,47 @@ class WaypointUpdater(object):
         rospy.spin()
 
     def pose_cb(self, msg):
-        if msg is None or self.wpsPositions is None:
+        if msg is None or self.wpsXY is None:
             return
 
-        minDistance, minDistanceIndex = self.closestWp2PoseNumpy(msg.pose)
-        wpOut = self.selectWP(self.wpsBase, minDistanceIndex)
+        with self.wpsLock:
+            wpDistance, wpIndex = self.closestWp2PoseNumpy(msg.pose)
+            wpClosest = self.wpsBase[wpIndex]
+
+            wpOut = self.selectWP(self.wpsBase, wpIndex)
+            wpX = self.wpsXY[wpIndex, 0]
+            wpY = self.wpsXY[wpIndex, 1]
+
         lane = Lane();
         lane.header.frame_id = '/world'
         lane.header.stamp = rospy.Time(0)
         lane.waypoints = wpOut
 
         self.final_waypoints_pub.publish(lane)
+
         rospy.logdebug("final wp index:%d, dist:%.2f; x:%.2f, y:%.2f; cx:%.2f, cy:%.2f",
-                       minDistanceIndex, minDistance,
-                       self.wpsBase[minDistanceIndex].pose.pose.position.x,
-                       self.wpsBase[minDistanceIndex].pose.pose.position.y,
+                       wpIndex, wpDistance,
+                       wpClosest.pose.pose.position.x,
+                       wpClosest.pose.pose.position.y,
                        msg.pose.position.x,
                        msg.pose.position.y)
 
-    def waypoints_cb(self, waypoints):
-        if(waypoints is None):
+    def waypoints_cb(self, msg):
+        if msg is None:
             return
-        self.wpsBase = waypoints.waypoints; # store waypoints as list
-        # cancel it, bad idea !
-        # self.base_wp_sub.unregister() # unsubcribe after the first data receive. It is always the same data
 
+        waypoints = msg.waypoints
+
+        # CAUTION. Don't overwrite self.wpsXY to avoid a race condition
         # copy each waypoint position in numpy array
-        self.wpsPositions = np.zeros((len(self.wpsBase),2), dtype=np.double)
-        for i in range(0, len(self.wpsBase)):
-            self.wpsPositions[i, 0] = waypoints.waypoints[i].pose.pose.position.x
-            self.wpsPositions[i, 1] = waypoints.waypoints[i].pose.pose.position.y
+        xy = np.zeros((len(waypoints), 2))
+        for i, wp in enumerate(waypoints):
+            xy[i, 0] = wp.pose.pose.position.x
+            xy[i, 1] = wp.pose.pose.position.y
+
+        with self.wpsLock:
+            self.wpsBase = waypoints
+            self.wpsXY = xy
 
     def traffic_cb(self, msg):
         # TODO: Callback for /traffic_waypoint message. Implement
@@ -106,15 +120,15 @@ class WaypointUpdater(object):
 
     # todo, start form last position --> maybe to usefull with numpy computing
     def closestWp2PoseNumpy(self, pose):
-        wpDeltaX = self.wpsPositions[:, 0] - pose.position.x
-        wpDeltaY = self.wpsPositions[:, 1] - pose.position.y
+        wpDeltaX = self.wpsXY[:, 0] - pose.position.x
+        wpDeltaY = self.wpsXY[:, 1] - pose.position.y
         deltaSquareDistance = (wpDeltaX*wpDeltaX)+(wpDeltaY*wpDeltaY)
 
         minDistanceIndex = deltaSquareDistance.argmin()
         minDistance = deltaSquareDistance[minDistanceIndex]
         return minDistance, minDistanceIndex
 
-    def selectWP(self,waypoints,indexClosest):
+    def selectWP(self, waypoints, indexClosest):
         idx = (indexClosest + self.numberInFrontOfClosestWaypointIndex) % len(waypoints)
 
         wpOut = waypoints[idx:idx+LOOKAHEAD_WPS]

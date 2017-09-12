@@ -24,7 +24,7 @@
     <group if="true">
       <!-- Reduce the frequency of waypoint loader to cause less trouble in
       average systems -->
-      <param name="/waypoint_loader/publish_frequency" value="1" />
+      <param name="/waypoint_loader/publish_frequency" value="0.1" />
     </group>
 
 </launch>
