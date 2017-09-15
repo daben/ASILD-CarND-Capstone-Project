@@ -176,14 +176,15 @@ class TLDetector(object):
             if light_state == TrafficLight.RED:
                 light_wp = self.get_closest_waypoint(waypoints, stop_point)
 
-            ego_wp = self.get_closest_waypoint(waypoints, (ego_x, ego_y))
+            start_at = max((light_index - 200), 0)
+            ego_wp = self.get_closest_waypoint(waypoints, (ego_x, ego_y), start_at)
             rospy.loginfo("Traffic light: %s at %d (%.2f m) (car at %d)",
                           self.light_state_string(light_state),
                           light_wp, stop_distance, ego_wp)
 
         return light_wp, light_state
 
-    def get_closest_waypoint(self, waypoints, position):
+    def get_closest_waypoint(self, waypoints, position, start_at=0):
         """Identifies the closest path waypoint to the given position
             https://en.wikipedia.org/wiki/Closest_pair_of_points_problem
         Args:
@@ -194,7 +195,7 @@ class TLDetector(object):
         """
         x, y = position
         # minimum squared distance to pose in waypoints
-        return min(xrange(len(waypoints)),
+        return min(xrange(start_at, len(waypoints)),
                    key=lambda i: ((waypoints[i].pose.pose.position.x - x)**2 +
                                   (waypoints[i].pose.pose.position.y - y)**2))
 
