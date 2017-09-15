@@ -192,9 +192,6 @@ class TLDetector(object):
                             self.light_state_string(light_state),
                             light_wp, light_distance, ego_position)
 
-        # TODO: Check the impact of this optimization
-        self.waypoints = None
-
         return light_wp, light_state
 
     def get_closest_waypoint(self, waypoints, pose):
