@@ -1,16 +1,4 @@
 #!/usr/bin/env python
-
-import rospy
-from geometry_msgs.msg import PoseStamped
-
-
-from styx_msgs.msg import Lane, Waypoint
-import sys
-import numpy as np
-
-import math
-import threading
-
 '''
 This node will publish waypoints from the car's current position to some `x` distance ahead.
 
@@ -26,118 +14,150 @@ as well as to verify your TL classifier.
 TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
-LOOKAHEAD_WPS = 200 # Number of waypoints we will publish. You can change this number
+import rospy
+from std_msgs.msg import Int32
+from geometry_msgs.msg import PoseStamped
+from styx_msgs.msg import Lane, Waypoint
+import math
+import threading
+from utils import benchmark
+from utils import loop_at_rate
+from utils import Waypoints
+
+
+# Number of waypoints we will publish. You can change this number
+LOOKAHEAD_WPS = 200
 
 
 class WaypointUpdater(object):
     def __init__(self):
         rospy.init_node('waypoint_updater', log_level=rospy.DEBUG)
 
-        rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
-        self.base_wp_sub = rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
+        self.waypoints = None
+        self.current_pose = None
+        self.tl_upcoming = None
+        self.max_decel = rospy.get_param("~max_decel", 2.)
 
-        # TODO: Add a subscriber for /traffic_waypoint and /obstacle_waypoint below
+        self.final_waypoints_publisher = \
+            rospy.Publisher('final_waypoints', Lane, queue_size=1)
+        self.waypoints_subscriber = \
+            rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
+        self.pose_subscriber = \
+            rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
+        self.traffic_subscriber = \
+            rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb)
 
-        self.final_waypoints_pub = rospy.Publisher('final_waypoints', Lane, queue_size=1)
-
-        # waypoints base list
-        self.wpsBase = None
-        # numpy array waypoint with positions [X,Y], to optimize time computation
-        self.wpsXY = None
-        # waypoints critical section
-        self.wpsLock = threading.RLock()
-
-        # Number added to the closest waypoint index, to be sure to be in front and not in back.
-        # with the closest algorithm, the waypoint found could be in front or in back of the car
-        self.numberInFrontOfClosestWaypointIndex = 1
-
-        rospy.spin()
+        self.loop()
 
     def pose_cb(self, msg):
-        if msg is None or self.wpsXY is None:
-            return
-
-        with self.wpsLock:
-            wpDistance, wpIndex = self.closestWp2PoseNumpy(msg.pose)
-            wpClosest = self.wpsBase[wpIndex]
-
-            wpOut = self.selectWP(self.wpsBase, wpIndex)
-            wpX = self.wpsXY[wpIndex, 0]
-            wpY = self.wpsXY[wpIndex, 1]
-
-        lane = Lane();
-        lane.header.frame_id = '/world'
-        lane.header.stamp = rospy.Time(0)
-        lane.waypoints = wpOut
-
-        self.final_waypoints_pub.publish(lane)
-
-        rospy.logdebug("final wp index:%d, dist:%.2f; x:%.2f, y:%.2f; cx:%.2f, cy:%.2f",
-                       wpIndex, wpDistance,
-                       wpClosest.pose.pose.position.x,
-                       wpClosest.pose.pose.position.y,
-                       msg.pose.position.x,
-                       msg.pose.position.y)
+        """Callback for /current_pose."""
+        self.current_pose = msg
 
     def waypoints_cb(self, msg):
-        if msg is None:
-            return
-
-        waypoints = msg.waypoints
-
-        # CAUTION. Don't overwrite self.wpsXY to avoid a race condition
-        # copy each waypoint position in numpy array
-        xy = np.zeros((len(waypoints), 2))
-        for i, wp in enumerate(waypoints):
-            xy[i, 0] = wp.pose.pose.position.x
-            xy[i, 1] = wp.pose.pose.position.y
-
-        with self.wpsLock:
-            self.wpsBase = waypoints
-            self.wpsXY = xy
+        """Callback for /base_waypoints."""
+        if msg is not None:
+            if self.waypoints is None:
+                self.waypoints = Waypoints(msg.waypoints)
+            else:
+                self.waypoints.update(msg.waypoints)
+            # NOTE. /base_waypoints are constant unsubscribe to save cpu
+            self.waypoints_subscriber.unregister()
 
     def traffic_cb(self, msg):
-        # TODO: Callback for /traffic_waypoint message. Implement
-        pass
+        """Callback for /traffic_waypoint message."""
+        self.tl_upcoming = msg.data
 
     def obstacle_cb(self, msg):
         # TODO: Callback for /obstacle_waypoint message. We will implement it later
         pass
 
-    def get_waypoint_velocity(self, waypoint):
-        return waypoint.twist.twist.linear.x
+    def loop(self):
+        publish_rate = rospy.get_param("~publish_rate", 50)
 
-    def set_waypoint_velocity(self, waypoints, waypoint, velocity):
-        waypoints[waypoint].twist.twist.linear.x = velocity
+        while not rospy.is_shutdown():
+            rospy.logwarn("waypoint updater waiting for data")
+            for _ in loop_at_rate(publish_rate):
+                # Wait for waypoints and pose
+                if (self.waypoints and self.current_pose
+                    and self.tl_upcoming is not None):
+                    break
 
-    def distance(self, waypoints, wp1, wp2):
-        dist = 0
-        dl = lambda a, b: math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2  + (a.z-b.z)**2)
-        for i in range(wp1, wp2+1):
-            dist += dl(waypoints[wp1].pose.pose.position, waypoints[i].pose.pose.position)
-            wp1 = i
-        return dist
+            rospy.loginfo("waypoint updater ready")
+            for _ in loop_at_rate(publish_rate):
 
-    # todo, start form last position --> maybe to usefull with numpy computing
-    def closestWp2PoseNumpy(self, pose):
-        wpDeltaX = self.wpsXY[:, 0] - pose.position.x
-        wpDeltaY = self.wpsXY[:, 1] - pose.position.y
-        deltaSquareDistance = (wpDeltaX*wpDeltaX)+(wpDeltaY*wpDeltaY)
+                if (rospy.get_time() - self.current_pose.header.stamp.to_sec()) > 3:
+                    rospy.logwarn("current pose too old... cancelling")
+                    self.current_pose = None
+                    break
 
-        minDistanceIndex = deltaSquareDistance.argmin()
-        minDistance = deltaSquareDistance[minDistanceIndex]
-        return minDistance, minDistanceIndex
+                with benchmark("update waypoints"):
+                    waypoints = self.update_waypoints(self.current_pose,
+                                                      self.tl_upcoming)
 
-    def selectWP(self, waypoints, indexClosest):
-        idx = (indexClosest + self.numberInFrontOfClosestWaypointIndex) % len(waypoints)
+                lane = Lane()
+                lane.header.frame_id = '/world'
+                lane.header.stamp = rospy.Time(0)
+                lane.waypoints = waypoints
 
-        wpOut = waypoints[idx:idx+LOOKAHEAD_WPS]
-        # while to avoid problem if len(waypoint)<LOOKAHEAD_WPS
-        # make assumption than track looped
-        while len(wpOut) < LOOKAHEAD_WPS:
-            wpOut.extend(waypoints[:LOOKAHEAD_WPS - len(wpOut)])
+                self.final_waypoints_publisher.publish(lane)
 
-        return wpOut
+    def update_waypoints(self, pose, tl_wp):
+        car_x = pose.pose.position.x
+        car_y = pose.pose.position.y
+        car_wp = self.waypoints.find(car_x, car_y)
+
+        waypoints = self.waypoints.slice(car_wp, LOOKAHEAD_WPS)
+
+        if tl_wp >= car_wp:
+            self.decelerate(waypoints, car_wp, tl_wp)
+            rospy.loginfo("upcoming traffic light in %d waypoints",
+                          tl_wp - car_wp)
+            # rospy.loginfo("...(speeds: %s)", [round(wp.twist.twist.linear.x, 2) for wp in waypoints])
+
+        rospy.logdebug("ego wp=%d, dist=%.2f; x=%.2f, y=%.2f; car_x=%.2f, car_y=%.2f",
+            car_wp, self.waypoints.distance_to_point(car_wp, car_x, car_y),
+            self.waypoints[car_wp].pose.pose.position.x,
+            self.waypoints[car_wp].pose.pose.position.y,
+            pose.pose.position.x,
+            pose.pose.position.y)
+
+        return waypoints
+
+    def decelerate(self, waypoints, start_index, stop_index):
+        """Decelerate a list of waypoints until stop.
+
+        Args:
+            waypoints (list): waypoints to decelerate
+            start (int): absolute index of the first waypoint in waypoints
+            stop (int): absolute index of the waypoint where speed = 0
+        """
+        # relative index
+        stop = stop_index - start_index
+        if stop >= len(waypoints):
+            stop = len(waypoints) - 1
+            dist = self.waypoints.distance(start_index + len(waypoints), stop_index)
+        else:
+            dist = 0.
+
+        # All waypoints beyond stop should have speed 0
+        for wp in waypoints[stop:]:
+            wp.twist.twist.linear.x = 0.
+
+        # Decelerate the rest of the waypoints accelerating from the stop
+        max_decel = self.max_decel
+        prev_pos = waypoints[stop].pose.pose.position
+        for index in xrange(stop-1, -1, -1):
+            wp = waypoints[index]
+            wp_pos = wp.pose.pose.position
+            # Compute distance
+            dist += math.sqrt((wp_pos.x - prev_pos.x)**2 +
+                              (wp_pos.y - prev_pos.y)**2 +
+                              (wp_pos.z - prev_pos.z)**2)
+            prev_pos = wp_pos
+            # Adjust target speed
+            vel = math.sqrt(2 * max_decel * dist)
+            if vel < 1.: vel = 0.
+            wp.twist.twist.linear.x = min(vel, wp.twist.twist.linear.x)
 
 
 if __name__ == '__main__':
