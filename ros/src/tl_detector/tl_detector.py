@@ -1,4 +1,7 @@
 #!/usr/bin/env python
+from __future__ import division
+from __future__ import print_function
+
 import rospy
 from std_msgs.msg import Int32
 from geometry_msgs.msg import PoseStamped, Pose, Quaternion
@@ -6,12 +9,16 @@ from styx_msgs.msg import TrafficLightArray, TrafficLight, Lane
 from sensor_msgs.msg import Image, CameraInfo
 from image_geometry import PinholeCameraModel
 from cv_bridge import CvBridge
-from light_classification.tl_classifier import TLClassifier
+# from light_classification.tl_classifier import TLClassifier
+from tl_detection.tl_detector import TrafficLightDetector
 import tf
-import cv2
 import yaml
 import math
 import numpy as np
+import cv2
+from utils import benchmark
+from utils import Waypoints
+from utils import loop_at_rate
 
 
 STATE_COUNT_THRESHOLD = 3
@@ -26,30 +33,15 @@ class TLDetector(object):
         self.camera_image = None
         self.lights = []
 
-        rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
-        rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
-
-        # /vehicle/traffic_lights helps you acquire an accurate ground truth data source for the traffic light
-        # classifier, providing the location and current color state of all traffic lights in the
-        # simulator. This state can be used to generate classified images or subbed into your solution to
-        # help you work on another single component of the node.
-        #
-        # After [9afd2a] This topic will be available in Carla but without the light state.
-        #
-        # /vehicle/traffic_lights topic will publish the exact position of the light
-        # both, in the simulator and in Carla.
-        rospy.Subscriber('/vehicle/traffic_lights', TrafficLightArray, self.traffic_cb)
-        rospy.Subscriber('/image_color', Image, self.image_cb)
-        rospy.Subscriber('/camera_info', CameraInfo, self.camera_info_cb)
-
+        # Camera info and stop positions
         config_string = rospy.get_param("/traffic_light_config")
         self.config = yaml.load(config_string)
 
-        self.upcoming_red_light_pub = rospy.Publisher('/traffic_waypoint', Int32, queue_size=1)
-
         self.bridge = CvBridge()
-        self.light_classifier = TLClassifier()
-        self.listener = tf.TransformListener()
+        self.tl_detector = TrafficLightDetector()
+
+        # Not used
+        # self.listener = tf.TransformListener()
 
         self.state = TrafficLight.UNKNOWN
         self.last_state = TrafficLight.UNKNOWN
@@ -63,7 +55,7 @@ class TLDetector(object):
         # NOTE. We don't handle stereo cameras (rectification and projection matrix)
         self.camera = PinholeCameraModel()
 
-        # Initialize camera model from config file
+        # Initialize camera model with the info from config file
         camera_info = self.config['camera_info']
         camera_info_msg = CameraInfo()
         camera_info_msg.width = camera_info["image_width"]
@@ -73,17 +65,48 @@ class TLDetector(object):
         camera_info_msg.P = self.get_camera_projection(camera_info).reshape(12, 1)
         self.camera.fromCameraInfo(camera_info_msg)
 
-        rospy.spin()
+        self.upcoming_red_light_pub = \
+            rospy.Publisher('/traffic_waypoint', Int32, queue_size=1)
+
+        self.pose_subscriber = \
+            rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
+        self.waypoints_subscriber = \
+            rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
+
+        # /vehicle/traffic_lights helps you acquire an accurate ground truth data source for the traffic light
+        # classifier, providing the location and current color state of all traffic lights in the
+        # simulator. This state can be used to generate classified images or subbed into your solution to
+        # help you work on another single component of the node.
+        #
+        # After [9afd2a] This topic will be available in Carla but without the light state.
+        #
+        # /vehicle/traffic_lights topic will publish the exact position of the light
+        # both, in the simulator and in Carla.
+        self.traffic_lights_subscriber = \
+            rospy.Subscriber('/vehicle/traffic_lights', TrafficLightArray, self.traffic_cb, queue_size=1)
+        self.image_color_subscriber = \
+            rospy.Subscriber('/image_color', Image, self.image_cb, queue_size=2, buff_size=2*1441024)
+        self.camera_info_subscriber = \
+            rospy.Subscriber('/camera_info', CameraInfo, self.camera_info_cb, queue_size=1)
+
+        self.loop()
 
     def camera_info_cb(self, camera_info):
         self.camera.fromCameraInfo(camera_info)
+        # NOTE. We don't plan to change the camera while driving.
+        self.camera_info_subscriber.unregister()
 
     def pose_cb(self, msg):
         self.pose_msg = msg
 
     def waypoints_cb(self, lane):
-        # Just take the waypoints
-        self.waypoints = lane.waypoints
+        if self.waypoints is None:
+            self.waypoints = Waypoints(lane.waypoints)
+        else:
+            self.waypoints.update(lane.waypoints)
+        # NOTE. For this project the waypoints are always constant,
+        # we can unsubscribe the topic to save cpu
+        self.waypoints_subscriber.unregister()
 
     def traffic_cb(self, msg):
         self.lights = msg.lights
@@ -95,39 +118,50 @@ class TLDetector(object):
         Args:
             msg (Image): image from car-mounted camera
         """
-        # Wait for pose and waypoints...
-        if not self.pose_msg or not self.waypoints:
-            self.state = TrafficLight.UNKNOWN
-            self.last_wp = -1
-            return
-
-        # The msg contains now the right encoding
         self.camera_image = msg
 
-        # Save current pose assuming it's the closest to
-        # the moment the picture was taken
-        # TODO: We should check the msg timestamps...
-        self.camera_pose = self.pose_msg.pose
+    def loop(self):
+        self.state = TrafficLight.UNKNOWN
+        self.last_wp = -1
 
-        light_wp, state = self.process_traffic_lights()
+        publish_frequency = rospy.get_param("~publish_frequency", 50)
 
-        # Publish upcoming red lights at camera frequency.
-        # Each predicted state has to occur `STATE_COUNT_THRESHOLD` number
-        # of times till we start using it. Otherwise the previous stable state
-        # is used.
-        if self.state != state:
-            self.state_count = 0
-            self.state = state
-        elif self.state_count >= STATE_COUNT_THRESHOLD:
-            self.last_state = self.state
-            light_wp = light_wp if state == TrafficLight.RED else -1
-            self.last_wp = light_wp
-            self.upcoming_red_light_pub.publish(Int32(light_wp))
-        else:
-            self.upcoming_red_light_pub.publish(Int32(self.last_wp))
-        self.state_count += 1
+        for _ in loop_at_rate(50):
+            # Wait for pose, waypoints and lights...
+            if self.pose_msg and self.waypoints and self.lights:
+                break
 
-    def process_traffic_lights(self):
+        for _ in loop_at_rate(publish_frequency):
+            # wait for images
+            if self.camera_image:
+
+                camera_image = self.camera_image
+                self.camera_image = None
+
+                with benchmark("process_traffic_lights %d" % camera_image.header.seq):
+                    light_wp, state = self.process_traffic_lights(camera_image,
+                                                                  self.pose_msg,
+                                                                  self.waypoints,
+                                                                  self.lights)
+
+                # Publish upcoming red lights at camera frequency.
+                # Each predicted state has to occur `STATE_COUNT_THRESHOLD` number
+                # of times till we start using it. Otherwise the previous stable state
+                # is used.
+                if self.state != state:
+                    self.state_count = 0
+                    self.state = state
+                elif self.state_count >= STATE_COUNT_THRESHOLD:
+                    self.last_state = self.state
+                    light_wp = light_wp if state == TrafficLight.RED else -1
+                    self.last_wp = light_wp
+                    self.upcoming_red_light_pub.publish(Int32(light_wp))
+                else:
+                    self.upcoming_red_light_pub.publish(Int32(self.last_wp))
+                self.state_count += 1
+
+
+    def process_traffic_lights(self, image_msg, pose_msg, waypoints, lights):
         """Finds closest visible traffic light, if one exists, and determines its
             location and color
 
@@ -138,19 +172,13 @@ class TLDetector(object):
         light_wp = -1
         light_state = TrafficLight.UNKNOWN
 
-        # Light positions
-        lights = self.lights
         # Positions where to stop at
         stop_positions = self.config['light_positions']
-        # Base waypoints
-        waypoints = self.waypoints
-        # Car pose at the time of the picture
-        car_pose = self.camera_pose
 
         # car position
-        ego_x = car_pose.position.x
-        ego_y = car_pose.position.y
-        ego_yaw = self.yaw_from_quaternion(car_pose.orientation)
+        ego_x = pose_msg.pose.position.x
+        ego_y = pose_msg.pose.position.y
+        ego_yaw = self.yaw_from_quaternion(pose_msg.pose.orientation)
         cos_yaw = math.cos(-ego_yaw)
         sin_yaw = math.sin(-ego_yaw)
 
@@ -171,13 +199,12 @@ class TLDetector(object):
         if stop_point:
             # Check traffic light
             light_index = self.get_closest_waypoint(lights, stop_point)
-            light_state = self.get_light_state(lights[light_index])
+            light_state = self.get_light_state(image_msg, lights[light_index])
 
             if light_state == TrafficLight.RED:
-                light_wp = self.get_closest_waypoint(waypoints, stop_point)
+                light_wp = waypoints.find(stop_point[0], stop_point[1])
 
-            start_at = max((light_index - 200), 0)
-            ego_wp = self.get_closest_waypoint(waypoints, (ego_x, ego_y), start_at)
+            ego_wp = waypoints.find(ego_x, ego_y)
             rospy.loginfo("Traffic light: %s at %d (%.2f m) (car at %d)",
                           self.light_state_string(light_state),
                           light_wp, stop_distance, ego_wp)
@@ -199,7 +226,7 @@ class TLDetector(object):
                    key=lambda i: ((waypoints[i].pose.pose.position.x - x)**2 +
                                   (waypoints[i].pose.pose.position.y - y)**2))
 
-    def get_light_state(self, light):
+    def get_light_state(self, camera_image, light):
         """Determines the current color of the traffic light
 
         Args:
@@ -209,18 +236,41 @@ class TLDetector(object):
             int: ID of traffic light color (specified in styx_msgs/TrafficLight)
         """
 
-        image = self.bridge.imgmsg_to_cv2(self.camera_image, "bgr8")
+        # image = self.bridge.imgmsg_to_cv2(camera_image, "rgb8")
+        image = (np.frombuffer(camera_image.data, dtype=np.uint8)
+                 .reshape(600, 800, 3))
 
+        # FIXME: Disabled to save time
         # Correct image for distortions
-        if True or self.camera.distortion_model:
-            tmp = np.zeros_like(image)
-            self.camera.rectifyImage(image, tmp)
-            image = tmp
+        # if self.camera.distortion_model:
+        #     tmp = np.zeros_like(image)
+        #     self.camera.rectifyImage(image, tmp)
+        #     image = tmp
 
-        # Get classification
-        # FIXME: implement the detector
-        return light.state
-        # return self.light_classifier.get_classification(image)
+        # Detect traffic lights in image.
+        # In the simulator the ground truth is in light.state
+        result = self.tl_detector.analyze(image)
+
+        if result:
+            # Just use the first one
+            state, score, bbox = result[0]
+            rospy.logdebug("tl_detector: %s (%.2f). /traffic_light state = %s",
+                           self.light_state_string(state),
+                           score,
+                           self.light_state_string(light.state))
+        else:
+            state = TrafficLight.UNKNOWN
+            rospy.logdebug("tl_detector: no TL present. /traffic_light state = %s",
+                           self.light_state_string(light.state))
+
+        # if state != light.state:
+        #     filename = "/tmp/tl_detector/sim_{}_{}_{}.jpg".format(
+        #         rospy.get_time(),
+        #         self.light_state_string(state),
+        #         self.light_state_string(light.state))
+        #     cv2.imwrite(filename, image[..., ::-1])
+
+        return state
 
     def light_state_string(self, state):
         if state == TrafficLight.RED:
