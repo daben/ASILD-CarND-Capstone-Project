@@ -182,13 +182,15 @@ class TLDetector(object):
         cos_yaw = math.cos(-ego_yaw)
         sin_yaw = math.sin(-ego_yaw)
 
+
         # Find next stop position
         stop_point = None
         stop_distance = None
         for stop_x, stop_y in stop_positions:
             dx = stop_x - ego_x
             dy = stop_y - ego_y
-            if dx * cos_yaw + dy * sin_yaw < 0:
+            # Give a margin in case we are at the stop position
+            if dx * cos_yaw - dy * sin_yaw < -5:
                 continue
 
             stop_distance = math.sqrt(dx*dx + dy*dy)
@@ -199,15 +201,19 @@ class TLDetector(object):
         if stop_point:
             # Check traffic light
             light_index = self.get_closest_waypoint(lights, stop_point)
+            # Ground truth:
+            # light_state = lights[light_index].state
             light_state = self.get_light_state(image_msg, lights[light_index])
 
-            if light_state == TrafficLight.RED:
-                light_wp = waypoints.find(stop_point[0], stop_point[1])
+            light_wp = waypoints.find(stop_point[0], stop_point[1])
 
-            ego_wp = waypoints.find(ego_x, ego_y)
-            rospy.loginfo("Traffic light: %s at %d (%.2f m) (car at %d)",
+            rospy.loginfo("Traffic light: %s (%s) at %d (%.2f m)",
                           self.light_state_string(light_state),
-                          light_wp, stop_distance, ego_wp)
+                          self.light_state_string(lights[light_index].state),
+                          light_wp - waypoints.find(ego_x, ego_y),
+                          stop_distance)
+        else:
+            rospy.logdebug("No traffic light")
 
         return light_wp, light_state
 

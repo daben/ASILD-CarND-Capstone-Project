@@ -13,7 +13,13 @@ class loop_at_rate(object):
             self.rate.sleep()
 
 
-class benchmark(object):
+class benchmark_disabled(object):
+    def __init__(self, *args): pass
+    def __enter__(self): pass
+    def __exit__(self, *args): pass
+
+
+class benchmark_enabled(object):
     def __init__(self, msg):
         self.msg = msg
         self.start = 0
@@ -30,12 +36,19 @@ class benchmark(object):
             rospy.logdebug("%s: %.0f msecs", self.msg, self.elapsed * 1e3)
 
 
+benchmark = benchmark_enabled
+
+
 class Waypoints(object):
     def __init__(self, waypoints):
-        self.xy = np.empty((len(waypoints), 2), np.float32)
-        self.dx = np.empty(len(waypoints), np.float32)
-        self.dy = np.empty(len(waypoints), np.float32)
+        self.size = len(waypoints)
+        self.xy = np.empty((self.size, 2), np.float32)
+        self.dx = np.empty(self.size, np.float32)
+        self.dy = np.empty(self.size, np.float32)
         self.update(waypoints)
+
+    def __len__(self):
+        return self.size
 
     def update(self, waypoints):
         self.waypoints = waypoints
