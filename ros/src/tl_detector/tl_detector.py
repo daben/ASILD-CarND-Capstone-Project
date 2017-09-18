@@ -244,7 +244,7 @@ class TLDetector(object):
 
         # image = self.bridge.imgmsg_to_cv2(camera_image, "rgb8")
         image = (np.frombuffer(camera_image.data, dtype=np.uint8)
-                 .reshape(600, 800, 3))
+                 .reshape(camera_image.height, camera_image.width, 3))#.reshape(600, 800, 3))
 
         # FIXME: Disabled to save time
         # Correct image for distortions
