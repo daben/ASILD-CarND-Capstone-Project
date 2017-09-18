@@ -182,7 +182,6 @@ class TLDetector(object):
         cos_yaw = math.cos(-ego_yaw)
         sin_yaw = math.sin(-ego_yaw)
 
-
         # Find next stop position
         stop_point = None
         stop_distance = None
@@ -218,13 +217,13 @@ class TLDetector(object):
         return light_wp, light_state
 
     def get_closest_waypoint(self, waypoints, position, start_at=0):
-        """Identifies the closest path waypoint to the given position
+        """Identifies the closest waypoint to the given position
             https://en.wikipedia.org/wiki/Closest_pair_of_points_problem
         Args:
             position (x, y): position to match a waypoint to
 
         Returns:
-            int: index of the closest waypoint in self.waypoints
+            int: index of the closest waypoint in waypoints
         """
         x, y = position
         # minimum squared distance to pose in waypoints
@@ -244,7 +243,7 @@ class TLDetector(object):
 
         # image = self.bridge.imgmsg_to_cv2(camera_image, "rgb8")
         image = (np.frombuffer(camera_image.data, dtype=np.uint8)
-                 .reshape(camera_image.height, camera_image.width, 3))#.reshape(600, 800, 3))
+                 .reshape(camera_image.height, camera_image.width, 3))
 
         # FIXME: Disabled to save time
         # Correct image for distortions
