@@ -20,11 +20,4 @@
 
     <!--Traffic Light Locations and Camera Config -->
     <param name="traffic_light_config" textfile="$(find tl_detector)/sim_traffic_light_config.yaml" />
-
-    <group if="true">
-      <!-- Reduce the frequency of waypoint loader to cause less trouble in
-      average systems -->
-      <param name="/waypoint_loader/publish_frequency" value="0.1" />
-    </group>
-
 </launch>
