@@ -18,7 +18,7 @@ TRAFFIC_LIGHT_CLASSES = (
 
 DEFAULT_MODEL_PATH = \
     os.path.join(os.path.dirname(__file__),
-                 "models/inference/frozen_inference_graph.pb")
+                 "models/frozen_inference_graph.pb")
 
 
 class TrafficLightDetector(object):
