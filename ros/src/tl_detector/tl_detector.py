@@ -73,15 +73,11 @@ class TLDetector(object):
         self.waypoints_subscriber = \
             rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
 
-        # /vehicle/traffic_lights helps you acquire an accurate ground truth data source for the traffic light
-        # classifier, providing the location and current color state of all traffic lights in the
-        # simulator. This state can be used to generate classified images or subbed into your solution to
-        # help you work on another single component of the node.
-        #
-        # After [9afd2a] This topic will be available in Carla but without the light state.
-        #
-        # /vehicle/traffic_lights topic will publish the exact position of the light
-        # both, in the simulator and in Carla.
+        # /vehicle/traffic_lights provides you with the location of the traffic light in 3D map space and
+        # helps you acquire an accurate ground truth data source for the traffic light
+        # classifier by sending the current color state of all traffic lights in the
+        # simulator. When testing on the vehicle, the color state will not be available. You'll need to
+        # rely on the position of the light and the camera image to predict it.
         self.traffic_lights_subscriber = \
             rospy.Subscriber('/vehicle/traffic_lights', TrafficLightArray, self.traffic_cb, queue_size=1)
         self.image_color_subscriber = \
@@ -172,8 +168,8 @@ class TLDetector(object):
         light_wp = -1
         light_state = TrafficLight.UNKNOWN
 
-        # Positions where to stop at
-        stop_positions = self.config['light_positions']
+        # List of positions that correspond to the line to stop in front of for a given intersection
+        stop_line_positions = self.config['stop_line_positions']
 
         # car position
         ego_x = pose_msg.pose.position.x
@@ -185,7 +181,7 @@ class TLDetector(object):
         # Find next stop position
         stop_point = None
         stop_distance = None
-        for stop_x, stop_y in stop_positions:
+        for stop_x, stop_y in stop_line_positions:
             dx = stop_x - ego_x
             dy = stop_y - ego_y
             # Give a margin in case we are at the stop position
