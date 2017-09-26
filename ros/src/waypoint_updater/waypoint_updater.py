@@ -115,11 +115,11 @@ class WaypointUpdater(object):
         waypoints = self.waypoints.slice(car_wp, LOOKAHEAD_WPS)
 
         if tl_wp > -1:
-            if tl_wp >= car_wp:
-                # NOTE. Give a margin to stop the car behind the stop line.
-                # TODO. We should use the actual length of the car.
-                tl_wp = (tl_wp - 2) % len(self.waypoints)
-                self.decelerate(waypoints, car_wp, tl_wp)
+            # NOTE. Give a margin to stop the car behind the stop line.
+            # TODO. We should use the actual length of the car.
+            tl_wp = (tl_wp - 2) % len(self.waypoints)
+            if tl_wp >= car_wp - 5:
+                self.decelerate(waypoints, car_wp, max(tl_wp, car_wp))
             rospy.loginfo("upcoming traffic light in %d waypoints", tl_wp - car_wp)
 
         rospy.logdebug("ego wp=%d, dist=%.2f; x=%.2f, y=%.2f; car_x=%.2f, car_y=%.2f; speed=%.1f, wp=%.1f",
@@ -130,7 +130,7 @@ class WaypointUpdater(object):
             pose.pose.position.y,
             self.current_velocity.twist.linear.x if self.current_velocity else float('nan'),
             waypoints[0].twist.twist.linear.x)
-        rospy.logdebug("...(speeds: %s)", [round(wp.twist.twist.linear.x, 1) for wp in waypoints])
+        rospy.logdebug("...(speeds: %s)", [round(wp.twist.twist.linear.x, 1) for wp in waypoints[:5]])
 
         return waypoints
 
@@ -152,7 +152,7 @@ class WaypointUpdater(object):
             end = stop
             dist = 0.
             # All waypoints beyond stop should have speed 0
-            for wp in waypoints[stop:]:
+            for wp in waypoints[end:]:
                 wp.twist.twist.linear.x = 0.
 
         if end == 0:
