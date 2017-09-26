@@ -202,11 +202,17 @@ class TLDetector(object):
 
             light_wp = waypoints.find(stop_point[0], stop_point[1])
 
-            rospy.loginfo("Traffic light: %s (%s) at %d (%.2f m)",
+            if lights[light_index].state != TrafficLight.UNKNOWN:
+                validation = " [{}]".format("OK" if light_state == lights[light_index].state else "FAIL")
+            else:
+                validation = ""
+
+            rospy.loginfo("Traffic light: %s (%s) at %d (%.2f m)%s",
                           self.light_state_string(light_state),
                           self.light_state_string(lights[light_index].state),
                           light_wp - waypoints.find(ego_x, ego_y),
-                          stop_distance)
+                          stop_distance,
+                          validation)
         else:
             rospy.logdebug("No traffic light")
 

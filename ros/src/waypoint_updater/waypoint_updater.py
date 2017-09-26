@@ -16,7 +16,7 @@ TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 
 import rospy
 from std_msgs.msg import Int32
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, TwistStamped
 from styx_msgs.msg import Lane, Waypoint
 import math
 import threading
@@ -26,7 +26,7 @@ from utils import Waypoints
 
 
 # Number of waypoints we will publish. You can change this number
-LOOKAHEAD_WPS = 200
+LOOKAHEAD_WPS = 50
 
 
 class WaypointUpdater(object):
@@ -35,6 +35,7 @@ class WaypointUpdater(object):
 
         self.waypoints = None
         self.current_pose = None
+        self.current_velocity = None
         self.tl_upcoming = None
         self.max_decel = rospy.get_param("~max_decel", 2.)
 
@@ -44,6 +45,8 @@ class WaypointUpdater(object):
             rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
         self.pose_subscriber = \
             rospy.Subscriber('/current_pose', PoseStamped, self.pose_cb)
+        self.velocity_subscriber = \
+            rospy.Subscriber('/current_velocity', TwistStamped, self.velocity_cb)
         self.traffic_subscriber = \
             rospy.Subscriber('/traffic_waypoint', Int32, self.traffic_cb)
 
@@ -52,6 +55,9 @@ class WaypointUpdater(object):
     def pose_cb(self, msg):
         """Callback for /current_pose."""
         self.current_pose = msg
+
+    def velocity_cb(self, msg):
+        self.current_velocity = msg
 
     def waypoints_cb(self, msg):
         """Callback for /base_waypoints."""
@@ -108,18 +114,23 @@ class WaypointUpdater(object):
 
         waypoints = self.waypoints.slice(car_wp, LOOKAHEAD_WPS)
 
-        if tl_wp >= car_wp:
-            self.decelerate(waypoints, car_wp, tl_wp)
-            rospy.loginfo("upcoming traffic light in %d waypoints",
-                          tl_wp - car_wp)
-            # rospy.loginfo("...(speeds: %s)", [round(wp.twist.twist.linear.x, 2) for wp in waypoints])
+        if tl_wp > -1:
+            if tl_wp >= car_wp:
+                # NOTE. Give a margin to stop the car behind the stop line.
+                # TODO. We should use the actual length of the car.
+                tl_wp = (tl_wp - 2) % len(self.waypoints)
+                self.decelerate(waypoints, car_wp, tl_wp)
+            rospy.loginfo("upcoming traffic light in %d waypoints", tl_wp - car_wp)
 
-        rospy.logdebug("ego wp=%d, dist=%.2f; x=%.2f, y=%.2f; car_x=%.2f, car_y=%.2f",
+        rospy.logdebug("ego wp=%d, dist=%.2f; x=%.2f, y=%.2f; car_x=%.2f, car_y=%.2f; speed=%.1f, wp=%.1f",
             car_wp, self.waypoints.distance_to_point(car_wp, car_x, car_y),
             self.waypoints[car_wp].pose.pose.position.x,
             self.waypoints[car_wp].pose.pose.position.y,
             pose.pose.position.x,
-            pose.pose.position.y)
+            pose.pose.position.y,
+            self.current_velocity.twist.linear.x if self.current_velocity else float('nan'),
+            waypoints[0].twist.twist.linear.x)
+        rospy.logdebug("...(speeds: %s)", [round(wp.twist.twist.linear.x, 1) for wp in waypoints])
 
         return waypoints
 
@@ -133,20 +144,25 @@ class WaypointUpdater(object):
         """
         # relative index
         stop = stop_index - start_index
-        if stop >= len(waypoints):
-            stop = len(waypoints) - 1
-            dist = self.waypoints.distance(start_index + len(waypoints), stop_index)
-        else:
-            dist = 0.
 
-        # All waypoints beyond stop should have speed 0
-        for wp in waypoints[stop:]:
-            wp.twist.twist.linear.x = 0.
+        if stop >= len(waypoints):
+            end = len(waypoints)
+            dist = self.waypoints.distance(start_index + end, stop_index)
+        else:
+            end = stop
+            dist = 0.
+            # All waypoints beyond stop should have speed 0
+            for wp in waypoints[stop:]:
+                wp.twist.twist.linear.x = 0.
+
+        if end == 0:
+            return
+
+        prev_pos = self.waypoints[start_index + end].pose.pose.position
 
         # Decelerate the rest of the waypoints accelerating from the stop
         max_decel = self.max_decel
-        prev_pos = waypoints[stop].pose.pose.position
-        for index in xrange(stop-1, -1, -1):
+        for index in xrange(end - 1, -1, -1):
             wp = waypoints[index]
             wp_pos = wp.pose.pose.position
             # Compute distance
