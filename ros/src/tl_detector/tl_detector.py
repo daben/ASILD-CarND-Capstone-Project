@@ -49,7 +49,7 @@ class TLDetector(object):
         self.state_count = 0
 
         # FIXME. These parameters will need tuning for the test site
-        self.max_light_dist = 150  # meters
+        self.max_light_dist = 50  # meters
         self.min_light_dist = 5  # meters
 
         # NOTE. We don't handle stereo cameras (rectification and projection matrix)
@@ -80,12 +80,23 @@ class TLDetector(object):
         # rely on the position of the light and the camera image to predict it.
         self.traffic_lights_subscriber = \
             rospy.Subscriber('/vehicle/traffic_lights', TrafficLightArray, self.traffic_cb, queue_size=1)
-        self.image_color_subscriber = \
-            rospy.Subscriber('/image_color', Image, self.image_cb, queue_size=2, buff_size=2*1441024)
         self.camera_info_subscriber = \
             rospy.Subscriber('/camera_info', CameraInfo, self.camera_info_cb, queue_size=1)
+        # delayed subscription
+        self.image_color_subscriber = None
 
         self.loop()
+
+    def set_image_subscription(self, on):
+        if on:
+            if self.image_color_subscriber:
+                return
+            self.image_color_subscriber = \
+                rospy.Subscriber('/image_color', Image, self.image_cb, queue_size=1, buff_size=1441024)
+        elif self.image_color_subscriber:
+            self.image_color_subscriber.unregister()
+            self.image_color_subscriber = None
+
 
     def camera_info_cb(self, camera_info):
         self.camera.fromCameraInfo(camera_info)
@@ -128,14 +139,18 @@ class TLDetector(object):
                 break
 
         for _ in loop_at_rate(publish_frequency):
-            # wait for images
-            if self.camera_image:
-
+            stop_point, stop_distance = self.next_stop_line(self.pose_msg)
+            # Ensure we are getting images
+            self.set_image_subscription(stop_point is not None)
+            # Wait for images
+            if stop_point and self.camera_image:
                 camera_image = self.camera_image
                 self.camera_image = None
 
                 with benchmark("process_traffic_lights %d" % camera_image.header.seq):
                     light_wp, state = self.process_traffic_lights(camera_image,
+                                                                  stop_point,
+                                                                  stop_distance,
                                                                   self.pose_msg,
                                                                   self.waypoints,
                                                                   self.lights)
@@ -156,18 +171,7 @@ class TLDetector(object):
                     self.upcoming_red_light_pub.publish(Int32(self.last_wp))
                 self.state_count += 1
 
-
-    def process_traffic_lights(self, image_msg, pose_msg, waypoints, lights):
-        """Finds closest visible traffic light, if one exists, and determines its
-            location and color
-
-        Returns:
-            int: index of waypoint closest to the upcoming traffic light (-1 if none exists)
-            int: ID of traffic light color (specified in styx_msgs/TrafficLight)
-        """
-        light_wp = -1
-        light_state = TrafficLight.UNKNOWN
-
+    def next_stop_line(self, pose_msg):
         # List of positions that correspond to the line to stop in front of for a given intersection
         stop_line_positions = self.config['stop_line_positions']
 
@@ -193,28 +197,41 @@ class TLDetector(object):
                 stop_point = stop_x, stop_y
                 break
 
-        if stop_point:
-            # Check traffic light
-            light_index = self.get_closest_waypoint(lights, stop_point)
-            # Ground truth:
-            # light_state = lights[light_index].state
-            light_state = self.get_light_state(image_msg, lights[light_index])
+        return stop_point, stop_distance
 
-            light_wp = waypoints.find(stop_point[0], stop_point[1])
+    def process_traffic_lights(self, image_msg, stop_point, stop_distance, pose_msg, waypoints, lights):
+        """Finds closest visible traffic light, if one exists, and determines its
+            location and color
 
-            if lights[light_index].state != TrafficLight.UNKNOWN:
-                validation = " [{}]".format("OK" if light_state == lights[light_index].state else "FAIL")
-            else:
-                validation = ""
+        Returns:
+            int: index of waypoint closest to the upcoming traffic light (-1 if none exists)
+            int: ID of traffic light color (specified in styx_msgs/TrafficLight)
+        """
+        light_wp = -1
+        light_state = TrafficLight.UNKNOWN
 
-            rospy.loginfo("Traffic light: %s (%s) at %d (%.2f m)%s",
-                          self.light_state_string(light_state),
-                          self.light_state_string(lights[light_index].state),
-                          light_wp - waypoints.find(ego_x, ego_y),
-                          stop_distance,
-                          validation)
+        # Check traffic light
+        light_index = self.get_closest_waypoint(lights, stop_point)
+        # Ground truth:
+        # light_state = lights[light_index].state
+        light_state = self.get_light_state(image_msg, lights[light_index])
+
+        light_wp = waypoints.find(stop_point[0], stop_point[1])
+
+        if lights[light_index].state != TrafficLight.UNKNOWN:
+            validation = " [{}]".format("OK" if light_state == lights[light_index].state else "FAIL")
         else:
-            rospy.logdebug("No traffic light")
+            validation = ""
+
+        ego_x = pose_msg.pose.position.x
+        ego_y = pose_msg.pose.position.y
+
+        rospy.loginfo("Traffic light: %s (%s) at %d (%.2f m)%s",
+                      self.light_state_string(light_state),
+                      self.light_state_string(lights[light_index].state),
+                      light_wp - waypoints.find(ego_x, ego_y),
+                      stop_distance,
+                      validation)
 
         return light_wp, light_state
 
