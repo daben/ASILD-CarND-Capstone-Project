@@ -38,9 +38,6 @@ class WaypointLoader(object):
     def quaternion_from_yaw(self, yaw):
         return tf.transformations.quaternion_from_euler(0., 0., yaw)
 
-    def get_velocity(self, velocity):
-        return velocity/3.6
-
     def load_waypoints(self, fname):
         waypoints = []
         with open(fname) as wfile:
