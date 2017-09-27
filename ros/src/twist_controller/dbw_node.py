@@ -140,16 +140,11 @@ class DBWNode(object):
 
                     rospy.logdebug(
                         "speed: %.1f / %.1f MPH, angular_speed: %.2f"
-                        ", throttle: %.2f, brake: %.2f, steer: %.2f"
-                        ", cte: %.2f",
+                        ", throttle: %.2f, brake: %.2f, steer: %.2f",
                         self.current_velocity.linear.x / 0.44704,
                         self.twist_cmd.linear.x / 0.44704,
                         self.twist_cmd.angular.z,
-                        throttle, brake, steering,
-                        self.twist_cmd.linear.y)
-                    rospy.logdebug(
-                        "accel_pid: %s",
-                        self.controller.accel_pid)
+                        throttle, brake, steering)
                 else:
                     throttle = brake = steering = 0.
 

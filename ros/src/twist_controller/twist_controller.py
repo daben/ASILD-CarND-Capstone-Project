@@ -117,14 +117,13 @@ class Controller(object):
 
         steer = max(-self.max_steer_angle, min(steer, self.max_steer_angle))
 
-        rospy.logdebug("twist_control: accel=%.2f, deadband=%.2f",
-                       accel, self.brake_deadband)
-        # print("twist_control: "
-        #       "linear_velocity=%.2f, "
-        #       "angular_velocity=%.2f, "
-        #       "current_velocity=%.2f, "
-        #       "current_angular_velocity=%.2f" % (
-        #     target_linear_speed, target_angular_speed,
-        #     current_linear_speed, current_angular_speed))
+        rospy.logdebug("twist_control: "
+                       "linear_velocity=%.2f, "
+                       "angular_velocity=%.2f, "
+                       "current_velocity=%.2f, "
+                       "current_angular_velocity=%.2f",
+                       target_linear_speed, target_angular_speed,
+                       current_linear_speed, current_angular_speed)
+        rospy.logdebug("accel_pid: %s", self.accel_pid)
 
         return throttle, brake, steer
