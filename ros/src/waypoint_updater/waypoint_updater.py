@@ -27,7 +27,7 @@ from utils import compute_crosstrack_error
 
 
 # Number of waypoints we will publish. You can change this number
-LOOKAHEAD_WPS = 50
+LOOKAHEAD_WPS = 30
 
 
 class WaypointUpdater(object):
