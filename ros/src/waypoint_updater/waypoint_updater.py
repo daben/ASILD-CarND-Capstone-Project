@@ -37,7 +37,7 @@ class WaypointUpdater(object):
         self.waypoints = None
         self.current_pose = None
         self.current_velocity = None
-        self.tl_upcoming = None
+        self.tl_upcoming = -1
         self.max_decel = rospy.get_param("~max_decel", 2.)
 
         self.final_waypoints_publisher = \
@@ -85,17 +85,16 @@ class WaypointUpdater(object):
             rospy.logwarn("waypoint updater waiting for data")
             for _ in loop_at_rate(publish_rate):
                 # Wait for waypoints and pose
-                if (self.waypoints and self.current_pose
-                    and self.tl_upcoming is not None):
+                if (self.waypoints and self.current_pose):
                     break
 
             rospy.loginfo("waypoint updater ready")
             for _ in loop_at_rate(publish_rate):
 
-                if (rospy.get_time() - self.current_pose.header.stamp.to_sec()) > 3:
-                    rospy.logwarn("current pose too old... cancelling")
-                    self.current_pose = None
-                    break
+                # if (rospy.get_time() - self.current_pose.header.stamp.to_sec()) > 3:
+                #     rospy.logwarn("current pose too old... cancelling")
+                #     self.current_pose = None
+                #     break
 
                 with benchmark("update waypoints"):
                     waypoints = self.update_waypoints(self.current_pose,
