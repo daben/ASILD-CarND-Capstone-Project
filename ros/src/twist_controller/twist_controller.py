@@ -114,7 +114,6 @@ class Controller(object):
         steer = self.yaw_controller.get_steering(target_linear_speed,
                                                  target_angular_speed,
                                                  current_linear_speed)
-        # steer += 0.1 * (target_angular_speed - current_angular_speed)
 
         steer = max(-self.max_steer_angle, min(steer, self.max_steer_angle))
 
