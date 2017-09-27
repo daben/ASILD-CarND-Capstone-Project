@@ -23,6 +23,7 @@ import threading
 from utils import benchmark
 from utils import loop_at_rate
 from utils import Waypoints
+from utils import compute_crosstrack_error
 
 
 # Number of waypoints we will publish. You can change this number
@@ -113,6 +114,8 @@ class WaypointUpdater(object):
         car_wp = self.waypoints.find(car_x, car_y)
 
         waypoints = self.waypoints.slice(car_wp, LOOKAHEAD_WPS)
+        # cte = compute_crosstrack_error(pose.pose, waypoints)
+        cte = float('nan')
 
         if tl_wp > -1:
             # NOTE. Give a margin to stop the car behind the stop line.
@@ -122,14 +125,15 @@ class WaypointUpdater(object):
                 self.decelerate(waypoints, car_wp, max(tl_wp, car_wp))
             rospy.loginfo("upcoming traffic light in %d waypoints", tl_wp - car_wp)
 
-        rospy.logdebug("ego wp=%d, dist=%.2f; x=%.2f, y=%.2f; car_x=%.2f, car_y=%.2f; speed=%.1f, wp=%.1f",
+        rospy.logdebug("ego wp=%d, dist=%.2f; x=%.2f, y=%.2f; car_x=%.2f, car_y=%.2f; speed=%.1f, wp=%.1f; cte=%.3f",
             car_wp, self.waypoints.distance_to_point(car_wp, car_x, car_y),
             self.waypoints[car_wp].pose.pose.position.x,
             self.waypoints[car_wp].pose.pose.position.y,
             pose.pose.position.x,
             pose.pose.position.y,
             self.current_velocity.twist.linear.x if self.current_velocity else float('nan'),
-            waypoints[0].twist.twist.linear.x)
+            waypoints[0].twist.twist.linear.x,
+            cte)
         rospy.logdebug("...(speeds: %s)", [round(wp.twist.twist.linear.x, 1) for wp in waypoints[:5]])
 
         return waypoints

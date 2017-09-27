@@ -41,6 +41,38 @@ class benchmark_enabled(object):
 
 benchmark = benchmark_disabled
 
+def yaw_from_quaternion(q):
+    return math.atan2(2.0 * (q.z * q.w + q.x * q.y),
+                     - 1.0 + 2.0 * (q.w * q.w + q.x * q.x))
+
+def compute_crosstrack_error(pose, waypoints):
+    ego_x = pose.position.x
+    ego_y = pose.position.y
+
+    ego_yaw = yaw_from_quaternion(pose.orientation)
+    cos_yaw = math.cos(-ego_yaw)
+    sin_yaw = math.sin(-ego_yaw)
+
+    # Convert to a frame relative to the pose
+    wp_x = np.zeros(len(waypoints))
+    wp_y = np.zeros(len(waypoints))
+    for i, wp in enumerate(waypoints):
+        dx = wp.pose.pose.position.x - ego_x
+        dy = wp.pose.pose.position.y - ego_y
+        wp_x[i] = dx * cos_yaw - dy * sin_yaw
+        wp_y[i] = dx * sin_yaw + dy * cos_yaw
+
+    # fit to a polynomial of degree 3
+    poly = np.poly1d(np.polyfit(wp_x, wp_y, 3))
+
+    # the crosstrack error is the independent coefficient
+    cte = poly(0.)
+
+    # for i, wp in enumerate(waypoints):
+    #     wp.twist.twist.linear.y = poly(wp_x[i])
+
+    return cte
+
 
 class Waypoints(object):
     def __init__(self, waypoints):
