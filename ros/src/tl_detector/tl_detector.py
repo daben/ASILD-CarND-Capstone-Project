@@ -159,20 +159,20 @@ class TLDetector(object):
                                                                   self.waypoints,
                                                                   self.lights)
 
-            # Publish upcoming red lights at constant rate.
-            # Each predicted state has to occur `STATE_COUNT_THRESHOLD` number
-            # of times till we start using it. Otherwise the previous stable state
-            # is used.
-            if self.state != state:
-                self.state_count = 0
-                self.state = state
-            elif self.state_count >= STATE_COUNT_THRESHOLD:
-                self.last_state = self.state
-                light_wp = light_wp if state == TrafficLight.RED else -1
-                self.last_wp = light_wp
+                # Publish upcoming red lights at constant rate.
+                # Each predicted state has to occur `STATE_COUNT_THRESHOLD` number
+                # of times till we start using it. Otherwise the previous stable state
+                # is used.
+                if self.state != state:
+                    self.state_count = 0
+                    self.state = state
+                elif self.state_count >= STATE_COUNT_THRESHOLD:
+                    self.last_state = self.state
+                    light_wp = light_wp if state != TrafficLight.GREEN else -1
+                    self.last_wp = light_wp
 
-            self.upcoming_red_light_pub.publish(Int32(self.last_wp))
-            self.state_count += 1
+                self.upcoming_red_light_pub.publish(Int32(self.last_wp))
+                self.state_count += 1
 
     def next_stop_line(self, pose_msg):
         # List of positions that correspond to the line to stop in front of for a given intersection

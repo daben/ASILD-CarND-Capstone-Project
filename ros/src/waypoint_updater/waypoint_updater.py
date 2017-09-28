@@ -120,7 +120,7 @@ class WaypointUpdater(object):
             # NOTE. Give a margin to stop the car behind the stop line.
             # TODO. We should use the actual length of the car.
             tl_wp = (tl_wp - 2) % len(self.waypoints)
-            if tl_wp >= car_wp - 5:
+            if tl_wp >= car_wp - 2:# - 5:
                 self.decelerate(waypoints, car_wp, max(tl_wp, car_wp))
             rospy.loginfo("upcoming traffic light in %d waypoints", tl_wp - car_wp)
 
@@ -145,6 +145,18 @@ class WaypointUpdater(object):
             start (int): absolute index of the first waypoint in waypoints
             stop (int): absolute index of the waypoint where speed = 0
         """
+        max_decel = self.max_decel
+        current_speed = max(self.current_velocity.twist.linear.x, 2.)
+        
+        # Get the distance from start to stop to see if we can still stop
+        dist = self.waypoints.distance(start_index, stop_index)
+        stop_dist = current_speed**2 / (2 * abs(max_decel))
+        
+        if dist + 5. < stop_dist:
+            rospy.loginfo("Not enough distance to stop - dist=%.2f sdist=%.2f speed=%.2f", dist, stop_dist, self.current_velocity.twist.linear.x)
+            # FIXME : Currently it does not work
+            #return
+        
         # relative index
         stop = stop_index - start_index
 
@@ -176,7 +188,8 @@ class WaypointUpdater(object):
             # Adjust target speed
             vel = math.sqrt(2 * max_decel * dist)
             if vel < 1.: vel = 0.
-            wp.twist.twist.linear.x = min(vel, wp.twist.twist.linear.x)
+            #wp.twist.twist.linear.x = min(vel, wp.twist.twist.linear.x)
+            wp.twist.twist.linear.x = min(vel, current_speed)
 
 
 if __name__ == '__main__':
