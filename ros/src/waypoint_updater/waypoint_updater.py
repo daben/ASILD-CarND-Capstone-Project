@@ -38,7 +38,7 @@ class WaypointUpdater(object):
         self.current_pose = None
         self.current_velocity = None
         self.tl_upcoming = -1
-        self.max_decel = rospy.get_param("~max_decel", 2.)
+        self.max_decel = rospy.get_param("/dbw_node/decel_limit", -5.)
 
         self.final_waypoints_publisher = \
             rospy.Publisher('final_waypoints', Lane, queue_size=1)
@@ -120,7 +120,7 @@ class WaypointUpdater(object):
             # NOTE. Give a margin to stop the car behind the stop line.
             # TODO. We should use the actual length of the car.
             tl_wp = (tl_wp - 2) % len(self.waypoints)
-            if tl_wp >= car_wp - 2:# - 5:
+            if tl_wp >= car_wp - 5:
                 self.decelerate(waypoints, car_wp, max(tl_wp, car_wp))
             rospy.loginfo("upcoming traffic light in %d waypoints", tl_wp - car_wp)
 
@@ -145,18 +145,19 @@ class WaypointUpdater(object):
             start (int): absolute index of the first waypoint in waypoints
             stop (int): absolute index of the waypoint where speed = 0
         """
-        max_decel = self.max_decel
-        current_speed = max(self.current_velocity.twist.linear.x, 2.)
+        max_decel = abs(self.max_decel)
+        current_speed = self.current_velocity.twist.linear.x
         
         # Get the distance from start to stop to see if we can still stop
-        dist = self.waypoints.distance(start_index, stop_index)
-        stop_dist = current_speed**2 / (2 * abs(max_decel))
+        # use the waypoint behind us
+        dist = self.waypoints.distance(start_index - 1, stop_index)
+        stop_dist = current_speed**2 / (2 * max_decel)
         
-        if dist + 5. < stop_dist:
-            rospy.loginfo("Not enough distance to stop - dist=%.2f sdist=%.2f speed=%.2f", dist, stop_dist, self.current_velocity.twist.linear.x)
-            # FIXME : Currently it does not work
-            #return
-        
+        if dist + 4.0 < stop_dist:
+            rospy.loginfo("Not enough distance to stop - dist=%.2f sdist=%.2f speed=%.2f", dist, stop_dist, current_speed)
+            return
+        else:
+            rospy.loginfo("Enough distance to stop - dist=%.2f sdist=%.2f speed=%.2f", dist, stop_dist, current_speed)
         # relative index
         stop = stop_index - start_index
 
@@ -174,9 +175,9 @@ class WaypointUpdater(object):
             return
 
         prev_pos = self.waypoints[start_index + end].pose.pose.position
+        target_speed = max(current_speed, 2.)
 
         # Decelerate the rest of the waypoints accelerating from the stop
-        max_decel = self.max_decel
         for index in xrange(end - 1, -1, -1):
             wp = waypoints[index]
             wp_pos = wp.pose.pose.position
@@ -189,7 +190,7 @@ class WaypointUpdater(object):
             vel = math.sqrt(2 * max_decel * dist)
             if vel < 1.: vel = 0.
             #wp.twist.twist.linear.x = min(vel, wp.twist.twist.linear.x)
-            wp.twist.twist.linear.x = min(vel, current_speed)
+            wp.twist.twist.linear.x = min(vel, target_speed)
 
 
 if __name__ == '__main__':

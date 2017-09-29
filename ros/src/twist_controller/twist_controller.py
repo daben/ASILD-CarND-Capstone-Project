@@ -47,7 +47,7 @@ class Controller(object):
         self.current_linear_speed = 0
 
         # throttle controller
-        self.accel_pid = PID(kp=0.4, ki=0.1, kd=0.0, min=0., max=1.)
+        self.accel_pid = PID(kp=0.3, ki=0.01, kd=0.0, min=0., max=1.)
         # steering controller
         self.yaw_controller = YawController(self.wheel_base,
                                             self.steer_ratio,
