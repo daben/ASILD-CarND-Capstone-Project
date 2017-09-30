@@ -1,11 +1,16 @@
 from __future__ import division
 from __future__ import print_function
 
+# Use our own version of tensorflow
+import os
+import sys
+local_path = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, os.path.join(local_path, "dist-packages"))
+
 import rospy
 from styx_msgs.msg import TrafficLight
 import tensorflow as tf
 import numpy as np
-import os
 
 
 TRAFFIC_LIGHT_CLASSES = (
