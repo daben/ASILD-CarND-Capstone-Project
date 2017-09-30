@@ -27,6 +27,8 @@ class TrafficLightDetector(object):
         self.min_score_threshold = score_threshold
         self.detection_graph = self._load_inference_graph(model)
         self._prepare_session(self.detection_graph)
+        # warm up
+        self.analyze(np.zeros((64,64,3), dtype=np.uint8))
 
     def analyze(self, image):
         """Detects and classify traffic lights in an image

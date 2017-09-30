@@ -4,6 +4,7 @@ from pid import PID
 from yaw_controller import YawController
 from lowpass import LowPassFilter
 import math
+import rospy
 
 GAS_DENSITY = 2.858  # kg/gal
 ONE_MPH = 0.44704  # Miles/hour to meters/second
@@ -46,7 +47,7 @@ class Controller(object):
         self.current_linear_speed = 0
 
         # throttle controller
-        self.accel_pid = PID(kp=0.4, ki=0.1, kd=0.0, min=0., max=1.)
+        self.accel_pid = PID(kp=0.5, ki=0.05, kd=0.0, min=0., max=1.)
         # steering controller
         self.yaw_controller = YawController(self.wheel_base,
                                             self.steer_ratio,
@@ -113,16 +114,16 @@ class Controller(object):
         steer = self.yaw_controller.get_steering(target_linear_speed,
                                                  target_angular_speed,
                                                  current_linear_speed)
-        # steer += 0.1 * (target_angular_speed - current_angular_speed)
 
         steer = max(-self.max_steer_angle, min(steer, self.max_steer_angle))
 
-        print("twist_control: "
-              "linear_velocity=%.2f, "
-              "angular_velocity=%.2f, "
-              "current_velocity=%.2f, "
-              "current_angular_velocity=%.2f" % (
-            target_linear_speed, target_angular_speed,
-            current_linear_speed, current_angular_speed))
+        rospy.logdebug("twist_control: "
+                       "linear_velocity=%.2f, "
+                       "angular_velocity=%.2f, "
+                       "current_velocity=%.2f, "
+                       "current_angular_velocity=%.2f",
+                       target_linear_speed, target_angular_speed,
+                       current_linear_speed, current_angular_speed)
+        rospy.logdebug("accel_pid: %s", self.accel_pid)
 
         return throttle, brake, steer
