@@ -99,7 +99,20 @@ class Waypoints(object):
         dx = np.multiply(dx, dx, dx)
         dy = np.multiply(dy, dy, dy)
         dist = np.add(dx, dy, dx)
-        return dist.argmin()
+
+        wp1 = dist.argmin()
+        wp2 = (wp1 + 1) % len(self)
+
+        # wp1 -> wp2
+        dx1 = self[wp2].pose.pose.position.x - self[wp1].pose.pose.position.x
+        dy1 = self[wp2].pose.pose.position.y - self[wp1].pose.pose.position.y
+        # (x,y) -> wp1
+        dx2 = self[wp1].pose.pose.position.x - x
+        dy2 = self[wp1].pose.pose.position.y - y
+        # sign of angle between wp1:wp2 and xy:wp1
+        sign_a = (dx1 * dx2 + dy1 * dy2)
+
+        return wp2 if sign_a >= 0 else wp1
 
     def __getitem__(self, idx):
         return self.waypoints[idx]
