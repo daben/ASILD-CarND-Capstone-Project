@@ -1,56 +1,83 @@
-This is the project repo for the final project of the Udacity Self-Driving Car Nanodegree: Programming a Real Self-Driving Car. For more information about the project, see the project introduction [here](https://classroom.udacity.com/nanodegrees/nd013/parts/6047fe34-d93c-4f50-8336-b70ef10cb4b2/modules/e1a23b06-329a-4684-a717-ad476f0d8dff/lessons/462c933d-9f24-42d3-8bdc-a08a5fc866e4/concepts/5ab4b122-83e6-436d-850f-9f4d26627fd9).
+![Udacity - Self-Driving Car NanoDegree](https://s3.amazonaws.com/udacity-sdc/github/shield-carnd.svg)
 
-### Installation 
+# Udacity Self-Driving Car Nanodegree: Term 3
+# Capstone Project: System Integration
+# Team: ASILD
 
-* Be sure that your workstation is running Ubuntu 16.04 Xenial Xerus or Ubuntu 14.04 Trusty Tahir. [Ubuntu downloads can be found here](https://www.ubuntu.com/download/desktop). 
-* If using a Virtual Machine to install Ubuntu, use the following configuration as minimum:
-  * 2 CPU
-  * 2 GB system memory
-  * 25 GB of free hard drive space
+![](imgs/Carla.jpg)
+
+## Team Members
+  - David Moriano (lead)
+  - Benoit Miroux
+  - Pierre Merriaux
+  - Sean Devlin
+  - Tim Abrahamsen
+
+## Introduction
+This is the final capstone project for Udacity's Self-Driving Car Nanodegree. It combines previous lessons on waypoint following, PID control, image recognition, and ROS to navigate a self-driving car around a track, while stopping for red lights.
+
+## Concepts
+Concepts explored in this project:
+
+  - ROS
+  - Image recognition and classification
+  - Waypoint following
+  - PID control
   
-  The Udacity provided virtual machine has ROS and Dataspeed DBW already installed, so you can skip the next two steps if you are using this.
+## Viewing the Project
 
-* Follow these instructions to install ROS
-  * [ROS Kinetic](http://wiki.ros.org/kinetic/Installation/Ubuntu) if you have Ubuntu 16.04.
-  * [ROS Indigo](http://wiki.ros.org/indigo/Installation/Ubuntu) if you have Ubuntu 14.04.
-* [Dataspeed DBW](https://bitbucket.org/DataspeedInc/dbw_mkz_ros)
-  * Use this option to install the SDK on a workstation that already has ROS installed: [One Line SDK Install (binary)](https://bitbucket.org/DataspeedInc/dbw_mkz_ros/src/81e63fcc335d7b64139d7482017d6a97b405e250/ROS_SETUP.md?fileviewer=file-view-default)
-* Download the [Udacity Simulator](https://github.com/udacity/CarND-Capstone/releases/tag/v1.2).
+[![Video of the project running the simulator](./imgs/video.jpg)](https://youtu.be/fIPjLkdL9Zo)
 
-### Usage
+You must have Ubuntu 16.04 or 14.04 installed to run the project. To run the project on the simulator, follow the instructions [here](./INSTALL.md) to download and install ROS and the Udacity simulator, and to build and run the project.
 
-1. Clone the project repository
-```bash
-git clone https://github.com/udacity/CarND-Capstone.git
-```
+Source code for ROS nodes is located in [./ros/src]().
 
-2. Install python dependencies
-```bash
-cd CarND-Capstone
-pip install -r requirements.txt
-```
-3. Make and run styx
-```bash
-cd ros
-catkin_make
-source devel/setup.sh
-roslaunch launch/styx.launch
-```
-4. Run the simulator
+## Write-Up
 
-### Real world testing
-1. Download [training bag](https://drive.google.com/file/d/0B2_h37bMVw3iYkdJTlRSUlJIamM/view?usp=sharing) that was recorded on the Udacity self-driving car
-2. Unzip the file
-```bash
-unzip traffic_light_bag_files.zip
-```
-3. Play the bag file
-```bash
-rosbag play -l traffic_light_bag_files/loop_with_traffic_light.bag
-```
-4. Launch your project in site mode
-```bash
-cd CarND-Capstone/ros
-roslaunch launch/site.launch
-```
+The [starter code](https://github.com/udacity/CarND-Capstone) for this project includes a framework for ROS nodes for perception, planning, and control of a self-driving car. The diagram for the whole system is below:
 
+![](./imgs/system_diagram.png)
+
+The work of this project focuses on three ROS nodes:
+
+  - A waypoint updater ([./ros/src/waypoint_updater]()) that feeds a list of next waypoints to a waypoint follower, and determines the target speed (necessary for maintaining desired velocity and stopping for red lights).
+  
+  - A controller ([./ros/src/twist_controller]()) that takes in the target linear and angular velocities from the waypoint follower, and calculates steering angle and throttle/brake values using a PID controller.
+  
+  - A traffic light detector ([./ros/src/tl_detector]()) that takes in images from a forward-facing camera, determines if there is a traffic light in the image, and if so determines the color of the traffic light.
+
+### Waypoint Updater
+
+The `waypoint_updater` node subscribes to the `/base_waypoints` topic, which contains an array of waypoints for the entire track. The `waypoint_updater` node finds for the closest waypoint in front of the car, and publishes an array of the next 200 waypoints to the `/final_waypoints` topic, which is used by the `waypoint_follower` node to determine the target linear and angular velocity for the car.
+
+The array of waypoints published to `/final_waypoints` includes the x and y coordinates of each waypoint, as well as their target linear velocities. This is necessary for keeping the car in the lane, as well as maintaining the desired velocity and stopping for red lights.
+
+The `waypoint_updater` node also subscribes to the `/traffic_waypoint` topic, which contains the nearest waypoint to the stop line of a red light, if one is found. It uses this information to command appropriate target velocities for the car to stop for red lights (and to go for green lights).
+
+### Twist Controller
+
+The `/twist_controller` node subscribes to the `/current_velocity` and `/twist_cmd` topics, which give the actual and target velocities (linear and angular) of the car, respectively.
+
+It calculates the desired throttle, braking, and steering using a PID controller and a physical model of the car (which includes parameters such as mass, wheel radius, etc), and publishes the steering, throttle, and brake commands to the `vehicle/steering_cmd`, `vehicle/throttle_cmd`, and `vehicle/brake_cmd` topics, respectively, which command the actuators in the car.
+
+### Traffic Light Detector
+
+The `tl_detector` node subscribes to the following topics:
+
+- `/vehicle/traffic_lights`: An array of waypoints for known traffic lights on the track
+- `/camera_info`: Calibration parameters for the camera
+- `/image_color`: A color image taken by the camera
+- `/current_pose`: Position and orientation of the car
+- `/base_waypoints`: The array of all waypoints for the track
+
+The `tl_detector` node uses a convolutional neural network to find traffic lights in image published in `/image_color` and determine the color of the light (see below).
+
+**Red light**
+
+![](./imgs/shot1.png)
+
+**Green light**
+
+![](./imgs/shot2.png)
+
+The `tl_detector` node then publishes color of the light and the waypoint nearest the stop line for the light, which are used by the `waypoint_updater` node to determine target velocities to either stop at a light or go through it.
