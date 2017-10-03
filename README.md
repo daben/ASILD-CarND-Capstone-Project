@@ -11,7 +11,7 @@
   - Benoit Miroux : benoit.miroux@gmail.com
   - Pierre Merriaux : pierre.merriaux@gmail.com
   - Sean Devlin : seanpdevlin@gmail.com
-  - Tim Abrahamsen : tim.abrahamsen@gmail.com
+  - Tim Abrahamsen : timmy_neutron@mac.com
 
 ## Introduction
 This is the final capstone project for Udacity's Self-Driving Car Nanodegree. It combines previous lessons on waypoint following, PID control, image recognition, and ROS to navigate a self-driving car around a track, while stopping for red lights.
