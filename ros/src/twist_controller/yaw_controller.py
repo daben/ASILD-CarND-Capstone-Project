@@ -26,11 +26,6 @@ class YawController(object):
     def get_steering(self, linear_velocity, angular_velocity, current_velocity):
         """Returns steering wheel angle."""
 
-        # if fabs(angular_velocity) < 1e-6:
-        #     return 0.
-        # else:
-        #     return self.get_angle(linear_velocity / angular_velocity)
-
         if fabs(linear_velocity) < 1e-6:
             return 0.
         else:
